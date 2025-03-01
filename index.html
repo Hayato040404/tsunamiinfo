@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>震度分布マップ</title>
+    <title>震度分布マップ（震源付き：❌）</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- 独自CSS -->
@@ -12,13 +12,17 @@
     <div id="map" style="height: 800px; width: 100%;"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // 地図の初期化（前橋市付近をデフォルト表示）
-        var map = L.map('map').setView([36.41, 139.06], 8);
+        // 地図の初期化（宮城県北部付近をデフォルト表示）
+        var map = L.map('map').setView([38.7, 141.4], 8); // 震源のデフォルト位置
 
         // OpenStreetMapタイルの追加
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
+
+        // レイヤーグループを定義（震源と観測点を分ける）
+        var epicenterLayer = new L.LayerGroup();
+        var intensityLayer = new L.LayerGroup();
 
         // 座標データをローカルJSONファイルから読み込む
         fetch('data/coordinates.json')
@@ -26,16 +30,50 @@
             .then(coordinates => {
                 // P2PQuake APIからデータを取得してGeoJSONに変換
                 fetch('https://api.p2pquake.net/v2/history?codes=551&limit=1')
-                    .then(response => response.json())
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
-                        if (data.length > 0) {
+                        try {
+                            if (!data || data.length === 0) {
+                                console.warn('P2PQuake API returned no data or empty array.');
+                                alert('震度データが取得できませんでした。デフォルトのデータを表示します。');
+                                return; // データがない場合は処理を終了
+                            }
+
                             let geojsonData = {
                                 type: "FeatureCollection",
                                 features: []
                             };
 
+                            // 震源情報の追加
+                            const epicenter = data[0]?.earthquake?.hypocenter;
+                            if (epicenter?.latitude && epicenter?.longitude) {
+                                let epicenterIcon = L.divIcon({
+                                    className: 'epicenter-icon',
+                                    html: '<div>❌</div>',
+                                    iconSize: [40, 40],
+                                    iconAnchor: [20, 20]
+                                });
+
+                                L.marker([epicenter.latitude, epicenter.longitude], { icon: epicenterIcon })
+                                    .bindPopup(`<b>震源</b><br>位置: ${epicenter.name || '不明'}<br>深さ: ${epicenter.depth || '不明'}km<br>マグニチュード: ${epicenter.magnitude || '不明'}`)
+                                    .addTo(epicenterLayer);
+                            } else {
+                                console.warn('No epicenter data available.');
+                            }
+
                             // 各観測点をGeoJSONフィーチャに変換
-                            data[0].points.forEach(point => {
+                            const points = data[0]?.points || [];
+                            if (points.length === 0) {
+                                console.warn('No intensity points data available.');
+                                return;
+                            }
+
+                            points.forEach(point => {
                                 // 震度レベルを文字列に変換
                                 let intensity = getIntensityLabel(point.scale);
                                 let icon = L.divIcon({
@@ -47,7 +85,7 @@
 
                                 // 住所から座標を取得（JSONデータを使用）
                                 let coordKey = findCoordKeyByAddress(point.addr, coordinates);
-                                let location = coordKey ? coordinates[coordKey].location : [139.06, 36.41]; // デフォルト値（前橋市）
+                                let location = coordKey ? coordinates[coordKey].location : [141.4, 38.7]; // デフォルト値（震源位置）
 
                                 geojsonData.features.push({
                                     type: "Feature",
@@ -64,7 +102,7 @@
                                 });
                             });
 
-                            // GeoJSONデータを地図に追加
+                            // 震度観測点を地図に追加
                             L.geoJSON(geojsonData, {
                                 pointToLayer: function(feature, latlng) {
                                     return L.marker(latlng, { icon: getIconForIntensity(feature.properties.intensity) });
@@ -77,13 +115,28 @@
                                     `;
                                     layer.bindPopup(popupContent);
                                 }
-                            }).addTo(map);
+                            }).addTo(intensityLayer);
+
+                            // レイヤーを地図に追加
+                            epicenterLayer.addTo(map);
+                            intensityLayer.addTo(map);
 
                             // 地図をフィーチャの範囲にズーム
-                            map.fitBounds(L.geoJSON(geojsonData).getBounds());
+                            let allBounds = L.featureGroup([epicenterLayer, intensityLayer]).getBounds();
+                            if (allBounds.isValid()) {
+                                map.fitBounds(allBounds, { padding: [50, 50] });
+                            } else {
+                                console.warn('No valid bounds to fit.');
+                            }
+                        } catch (error) {
+                            console.error('Error processing P2PQuake data:', error);
+                            alert('データ処理中にエラーが発生しました。詳細をコンソールで確認してください。');
                         }
                     })
-                    .catch(error => console.error('Error fetching P2PQuake data:', error));
+                    .catch(error => {
+                        console.error('Error fetching P2PQuake data:', error);
+                        alert('P2PQuake APIからデータを取得できませんでした。ネットワーク接続やAPIの状態を確認してください。');
+                    });
             })
             .catch(error => console.error('Error fetching coordinates:', error));
 
