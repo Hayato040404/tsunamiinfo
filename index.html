@@ -2,19 +2,127 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>津波情報ディスプレイ</title>
+    <title>震度分布マップ</title>
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="style.css">
+    <!-- 独自CSS -->
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="map" style="height: 600px; width: 100%;"></div>
-    <div id="controls">
-        <label>
-            <input type="checkbox" id="testMode" onchange="toggleTestMode()"> テストモード
-        </label>
-    </div>
+    <div id="map" style="height: 800px; width: 100%;"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="script.js"></script>
+    <script>
+        // 地図の初期化（前橋市付近をデフォルト表示）
+        var map = L.map('map').setView([36.41, 139.06], 8);
+
+        // OpenStreetMapタイルの追加
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // 座標データをローカルJSONファイルから読み込む
+        fetch('data/coordinates.json')
+            .then(response => response.json())
+            .then(coordinates => {
+                // P2PQuake APIからデータを取得してGeoJSONに変換
+                fetch('https://api.p2pquake.net/v2/history?codes=551&limit=1')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.length > 0) {
+                            let geojsonData = {
+                                type: "FeatureCollection",
+                                features: []
+                            };
+
+                            // 各観測点をGeoJSONフィーチャに変換
+                            data[0].points.forEach(point => {
+                                // 震度レベルを文字列に変換
+                                let intensity = getIntensityLabel(point.scale);
+                                let icon = L.divIcon({
+                                    className: `intensity-icon intensity-${intensity}`,
+                                    html: `<div>${intensity}</div>`,
+                                    iconSize: [30, 30],
+                                    iconAnchor: [15, 15]
+                                });
+
+                                // 住所から座標を取得（JSONデータを使用）
+                                let coordKey = findCoordKeyByAddress(point.addr, coordinates);
+                                let location = coordKey ? coordinates[coordKey].location : [139.06, 36.41]; // デフォルト値（前橋市）
+
+                                geojsonData.features.push({
+                                    type: "Feature",
+                                    geometry: {
+                                        type: "Point",
+                                        coordinates: location // [longitude, latitude]
+                                    },
+                                    properties: {
+                                        addr: point.addr,
+                                        pref: point.pref,
+                                        intensity: intensity,
+                                        scale: point.scale
+                                    }
+                                });
+                            });
+
+                            // GeoJSONデータを地図に追加
+                            L.geoJSON(geojsonData, {
+                                pointToLayer: function(feature, latlng) {
+                                    return L.marker(latlng, { icon: getIconForIntensity(feature.properties.intensity) });
+                                },
+                                onEachFeature: function(feature, layer) {
+                                    let popupContent = `
+                                        <b>住所:</b> ${feature.properties.addr}<br>
+                                        <b>都道府県:</b> ${feature.properties.pref}<br>
+                                        <b>震度:</b> ${feature.properties.intensity}
+                                    `;
+                                    layer.bindPopup(popupContent);
+                                }
+                            }).addTo(map);
+
+                            // 地図をフィーチャの範囲にズーム
+                            map.fitBounds(L.geoJSON(geojsonData).getBounds());
+                        }
+                    })
+                    .catch(error => console.error('Error fetching P2PQuake data:', error));
+            })
+            .catch(error => console.error('Error fetching coordinates:', error));
+
+        // 震度レベルを文字列に変換
+        function getIntensityLabel(scale) {
+            switch (scale) {
+                case 10: return "1";
+                case 20: return "2";
+                case 30: return "3";
+                case 40: return "4";
+                case 45: return "5弱";
+                case 46: return "5弱以上";
+                case 50: return "5強";
+                case 55: return "6弱";
+                case 60: return "6強";
+                case 70: return "7";
+                default: return "不明";
+            }
+        }
+
+        // 住所からJSON内の対応する座標キーを検索
+        function findCoordKeyByAddress(address, coordinates) {
+            for (let key in coordinates) {
+                if (coordinates[key].name === address) {
+                    return key;
+                }
+            }
+            return null; // 一致する住所が見つからない場合
+        }
+
+        // 震度に対応するアイコンを返す
+        function getIconForIntensity(intensity) {
+            return L.divIcon({
+                className: `intensity-icon intensity-${intensity}`,
+                html: `<div>${intensity}</div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+        }
+    </script>
 </body>
 </html>
