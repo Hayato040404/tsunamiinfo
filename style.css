@@ -1,10 +1,18 @@
-#map {
-    border: 1px solid #000;
+.intensity-icon {
+    text-align: center;
+    line-height: 30px;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 12px;
 }
 
-#controls {
-    margin: 10px;
-    padding: 10px;
-    background-color: #f0f0f0;
-    border-radius: 5px;
-}
+.intensity-1 { background-color: #00FFFF; color: #000; } /* 震度1: 水色 */
+.intensity-2 { background-color: #00FF00; color: #000; } /* 震度2: 緑 */
+.intensity-3 { background-color: #FFFF00; color: #000; } /* 震度3: 黄色 */
+.intensity-4 { background-color: #FFA500; color: #000; } /* 震度4: 橙 */
+.intensity-5弱 { background-color: #FF4500; color: #FFF; } /* 震度5弱: 赤橙 */
+.intensity-5弱以上 { background-color: #FF4500; color: #FFF; } /* 震度5弱以上: 赤橙 */
+.intensity-5強 { background-color: #FF0000; color: #FFF; } /* 震度5強: 赤 */
+.intensity-6弱 { background-color: #8B0000; color: #FFF; } /* 震度6弱: 暗赤 */
+.intensity-6強 { background-color: #800080; color: #FFF; } /* 震度6強: 紫 */
+.intensity-7 { background-color: #FF00FF; color: #FFF; } /* 震度7: ピンク */
