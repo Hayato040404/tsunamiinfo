@@ -16,3 +16,10 @@
 .intensity-6弱 { background-color: #8B0000; color: #FFF; } /* 震度6弱: 暗赤 */
 .intensity-6強 { background-color: #800080; color: #FFF; } /* 震度6強: 紫 */
 .intensity-7 { background-color: #FF00FF; color: #FFF; } /* 震度7: ピンク */
+
+.epicenter-icon {
+    text-align: center;
+    line-height: 40px;
+    font-size: 24px; /* 「❌」を大きく表示 */
+    color: #FF0000; /* 赤色で目立たせる */
+}
