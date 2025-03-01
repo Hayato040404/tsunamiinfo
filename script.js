@@ -20,38 +20,39 @@ function initializeMap() {
         })
         .catch(error => console.error('GeoJSONの読み込みエラー:', error));
 
-    // APIまたはテストデータから情報を更新
+    // テストモードの初期設定
     updateTsunamiInfo();
 }
 
-// 津波予報区の表示
+// 津波予報区の表示（海岸線に線を引く）
 function displayTsunamiRegions(geojsonData) {
     L.geoJSON(geojsonData, {
         style: function(feature) {
-            return {
-                fillColor: getColorForRegion(feature.properties.grade),
+            // テストモードまたはAPIデータに基づくスタイル
+            let style = {
+                color: 'gray', // デフォルトの色
                 weight: 2,
-                opacity: 1,
-                color: 'black',
-                fillOpacity: 0.7
+                opacity: 0.7
             };
+
+            if (testMode && feature.properties.grade === 'Warning') {
+                style.color = 'pink'; // 警告区域はピンク（画像参考）
+                style.weight = 5; // 太い線
+            } else if (feature.properties.grade === 'Watch') {
+                style.color = 'yellow';
+                style.weight = 3;
+            }
+
+            return style;
         },
         onEachFeature: function(feature, layer) {
+            // ポップアップに津波情報を追加
             layer.bindPopup(createPopupContent(feature.properties));
         }
     }).addTo(map);
 }
 
-// 地域の色を決定（例: Warningは赤、Watchは黄色）
-function getColorForRegion(grade) {
-    switch(grade) {
-        case 'Warning': return 'red';
-        case 'Watch': return 'yellow';
-        default: return 'gray';
-    }
-}
-
-// ポップアップの内容を生成
+// ポップアップの内容を生成（津波高さなどを表示）
 function createPopupContent(properties) {
     let content = `<h3>${properties.name}</h3>`;
     if (properties.maxHeight) {
@@ -63,49 +64,96 @@ function createPopupContent(properties) {
     return content;
 }
 
+// ラベル（津波高さ10mなど）を追加
+function addTsunamiHeightLabel(coordinates, height) {
+    L.marker(coordinates, {
+        icon: L.divIcon({
+            className: 'tsunami-label',
+            html: `<div style="background-color: pink; color: white; padding: 2px 6px; border-radius: 3px;">${height}m</div>`,
+            iconSize: [60, 20]
+        })
+    }).addTo(map);
+}
+
 // APIまたはテストデータから津波情報を取得
 function updateTsunamiInfo() {
-    let url = testMode ? null : 'https://api.p2pquake.net/v2/history?codes=552&limit=1';
-
     let data = testMode ? {
         "areas": [
             {
                 "grade": "Warning",
                 "name": "福島県",
-                "maxHeight": { "value": 3, "description": "３ｍ" },
-                "firstHeight": { "condition": "津波到達中と推測" }
+                "maxHeight": { "value": 10, "description": "10m" },
+                "firstHeight": { "condition": "津波到達中と推測" },
+                "coordinates": [37.75, 140.47] // 例: 福島県の海岸線座標
             },
             {
                 "grade": "Watch",
                 "name": "青森県太平洋沿岸",
-                "maxHeight": { "value": 1, "description": "１ｍ" },
-                "firstHeight": { "arrivalTime": "2019/06/18 22:40:00" }
+                "maxHeight": { "value": 10, "description": "10m" },
+                "firstHeight": { "arrivalTime": "2019/06/18 22:40:00" },
+                "coordinates": [41.33, 141.35] // 例: 青森県の海岸線座標
             }
         ]
     } : null;
 
     if (testMode) {
-        processTsunamiData(data);
+        processTsunamiData(data.areas);
     } else {
-        fetch(url)
+        fetch('https://api.p2pquake.net/v2/history?codes=552&limit=1')
             .then(response => response.json())
             .then(data => processTsunamiData(data[0].areas))
             .catch(error => console.error('APIエラー:', error));
     }
 }
 
-// 津波データを処理して地図に反映
+// 津波データを処理して地図に反映（線とラベルを追加）
 function processTsunamiData(areas) {
     areas.forEach(area => {
-        // ここでGeoJSONの各フィーチャを更新（例: 色やポップアップの内容）
-        console.log(`Processing area: ${area.name}, Grade: ${area.grade}, Max Height: ${area.maxHeight.value}m`);
+        // 対応するGeoJSONフィーチャを特定してスタイルを更新（簡略化のため、ここでは仮定）
+        if (area.grade === 'Warning') {
+            // ピンクの太線を海岸線に追加（GeoJSONのfeatureに基づく）
+            let coastline = findCoastlineByName(area.name, map); // 名前で海岸線を検索
+            if (coastline) {
+                coastline.setStyle({
+                    color: 'pink',
+                    weight: 5,
+                    opacity: 1
+                });
+            }
+
+            // 津波高さのラベルを追加
+            if (area.coordinates && area.maxHeight) {
+                addTsunamiHeightLabel(area.coordinates, area.maxHeight.value);
+            }
+        }
     });
+}
+
+// 名前から海岸線フィーチャを検索（簡略化のため仮の関数）
+function findCoastlineByName(name, map) {
+    // 実際にはGeoJSONのfeature.properties.nameで検索
+    // ここでは仮の実装（実際のGeoJSONデータを確認して調整が必要）
+    let layers = map._layers;
+    for (let key in layers) {
+        if (layers[key].feature && layers[key].feature.properties.name === name) {
+            return layers[key];
+        }
+    }
+    return null;
 }
 
 // テストモードのトグル
 function toggleTestMode() {
     testMode = document.getElementById('testMode').checked;
-    updateTsunamiInfo(); // モード変更時にデータを再読み込み
+    // 既存のレイヤーをクリア
+    map.eachLayer(layer => {
+        if (layer instanceof L.GeoJSON) {
+            map.removeLayer(layer);
+        }
+    });
+    // 地図を再描画
+    displayTsunamiRegions(); // GeoJSONを再読み込み
+    updateTsunamiInfo(); // データも更新
 }
 
 // ページロード時に地図を初期化
