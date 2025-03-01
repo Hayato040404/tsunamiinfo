@@ -86,12 +86,18 @@
                                 // 住所から座標を取得（JSONデータを使用）
                                 let coordKey = findCoordKeyByAddress(point.addr, coordinates);
                                 let location = coordKey ? coordinates[coordKey].location : [141.4, 38.7]; // デフォルト値（震源位置）
+                                
+                                // 緯度経度が配列で、かつ有効な数値であることを確認
+                                if (!Array.isArray(location) || location.length !== 2 || isNaN(location[0]) || isNaN(location[1])) {
+                                    console.warn(`Invalid location for address: ${point.addr}, using default [141.4, 38.7]`);
+                                    location = [141.4, 38.7]; // デフォルト値
+                                }
 
                                 geojsonData.features.push({
                                     type: "Feature",
                                     geometry: {
                                         type: "Point",
-                                        coordinates: location // [longitude, latitude]
+                                        coordinates: [location[0], location[1]] // [longitude, latitude]
                                     },
                                     properties: {
                                         addr: point.addr,
@@ -103,19 +109,23 @@
                             });
 
                             // 震度観測点を地図に追加
-                            L.geoJSON(geojsonData, {
-                                pointToLayer: function(feature, latlng) {
-                                    return L.marker(latlng, { icon: getIconForIntensity(feature.properties.intensity) });
-                                },
-                                onEachFeature: function(feature, layer) {
-                                    let popupContent = `
-                                        <b>住所:</b> ${feature.properties.addr}<br>
-                                        <b>都道府県:</b> ${feature.properties.pref}<br>
-                                        <b>震度:</b> ${feature.properties.intensity}
-                                    `;
-                                    layer.bindPopup(popupContent);
-                                }
-                            }).addTo(intensityLayer);
+                            if (geojsonData.features.length > 0) {
+                                L.geoJSON(geojsonData, {
+                                    pointToLayer: function(feature, latlng) {
+                                        return L.marker(latlng, { icon: getIconForIntensity(feature.properties.intensity) });
+                                    },
+                                    onEachFeature: function(feature, layer) {
+                                        let popupContent = `
+                                            <b>住所:</b> ${feature.properties.addr}<br>
+                                            <b>都道府県:</b> ${feature.properties.pref}<br>
+                                            <b>震度:</b> ${feature.properties.intensity}
+                                        `;
+                                        layer.bindPopup(popupContent);
+                                    }
+                                }).addTo(intensityLayer);
+                            } else {
+                                console.warn('No valid features to display on the map.');
+                            }
 
                             // レイヤーを地図に追加
                             epicenterLayer.addTo(map);
@@ -127,6 +137,7 @@
                                 map.fitBounds(allBounds, { padding: [50, 50] });
                             } else {
                                 console.warn('No valid bounds to fit.');
+                                map.setView([38.7, 141.4], 8); // デフォルトの位置にズーム
                             }
                         } catch (error) {
                             console.error('Error processing P2PQuake data:', error);
@@ -164,6 +175,7 @@
                     return key;
                 }
             }
+            console.warn(`No coordinate found for address: ${address}`);
             return null; // 一致する住所が見つからない場合
         }
 
